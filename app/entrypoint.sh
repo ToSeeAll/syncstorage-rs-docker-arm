@@ -2,22 +2,22 @@
 
 sleep 5
 
-# First run all migrations
-/usr/local/cargo/bin/diesel --database-url "${SYNC_SYNCSTORAGE_DATABASE_URL}" migration --migration-dir syncstorage-mysql/migrations run
-/usr/local/cargo/bin/diesel --database-url "${SYNC_TOKENSERVER_DATABASE_URL}" migration --migration-dir tokenserver-db/migrations run
+# 运行所有数据库迁移
+diesel --database-url "${SYNC_SYNCSTORAGE_DATABASE_URL}" migration --migration-dir /app/syncstorage-mysql/migrations run
+diesel --database-url "${SYNC_TOKENSERVER_DATABASE_URL}" migration --migration-dir /app/tokenserver-db/migrations run
 
-# Parse token server database URL
-proto="$(echo $SYNC_TOKENSERVER_DATABASE_URL | grep :// | sed -e's,^\(.*://\).*,\1,g')"
+# 解析token server数据库URL
+proto="$(echo $SYNC_TOKENSERVER_DATABASE_URL | grep :// | sed -e's,^\(.*://\).*\,\1,g')"
 url="$(echo ${SYNC_TOKENSERVER_DATABASE_URL/$proto/})"
 userpass="$(echo $url | grep @ | cut -d@ -f1)"
 pass="$(echo $userpass | grep : | cut -d: -f2)"
 user="$(echo $userpass | grep : | cut -d: -f1)"
 host="$(echo ${url/$user:$pass@/} | cut -d/ -f1)"
-port="$(echo $host | sed -e 's,^.*:,:,g' -e 's,.*:\([0-9]*\).*,\1,g' -e 's,[^0-9],,g')"
+port="$(echo $host | sed -e 's,^.*:,:,g' -e 's,.*:\([0-9]*\).*\,\1,g' -e 's,[^0-9],,g')"
 host="$(echo ${host/:$port/} | cut -d/ -f1)"
 db="$(echo $url | grep / | cut -d/ -f2-)"
 
-# Create service and node if they doesnt exist
+# 创建服务和节点（如果不存在）
 mysql $db -h $host -P $port -u $user -p"$pass" <<EOF
 DELETE FROM services;
 INSERT INTO services (id, service, pattern) VALUES
@@ -27,7 +27,7 @@ INSERT INTO nodes (id, service, node, capacity, available, current_load, downed,
     ON DUPLICATE KEY UPDATE node = "${SYNC_URL}", capacity = ${SYNC_CAPACITY}, available = (SELECT ${SYNC_CAPACITY} - current_load from (SELECT * FROM nodes) as n2 where id = 1);
 EOF
 
-# Write config file
+# 写入配置文件
 cat > /config/local.toml <<EOF
 master_secret = "${SYNC_MASTER_SECRET}"
 
@@ -50,10 +50,10 @@ tokenserver.fxa_browserid_issuer = "https://api.accounts.firefox.com"
 tokenserver.fxa_browserid_server_url = "https://verifier.accounts.firefox.com/v2"
 EOF
 
-# Enter venv and run server
+# 进入虚拟环境并运行服务器
 if [ -z "$LOGLEVEL" ]; then
   LOGLEVEL=warn
 fi
 
 source /app/venv/bin/activate
-RUST_LOG=$LOGLEVEL /usr/local/cargo/bin/syncserver --config /config/local.toml
+RUST_LOG=$LOGLEVEL syncserver --config /config/local.toml
